@@ -76,6 +76,9 @@ vollständigen Ergebnis ohne Sprecherlabels.
    eintragen (durch Komma oder Zeilenumbruch getrennt). Das Modell bevorzugt
    dann diese Schreibweisen in der ganzen Aufnahme. Nur Begriffe eintragen, die
    wirklich vorkommen; bei Stille kann das Modell sonst Begriffe erfinden.
+   Die Liste wird bei jeder Änderung automatisch in `fachbegriffe.txt` im
+   Projektordner gespeichert und beim nächsten Öffnen wieder geladen. Die Datei
+   kann auch direkt bearbeitet werden (Änderungen erscheinen nach Neuladen der Seite).
 4. `Transkribieren` drücken. Die Seite zeigt den aktuellen Schritt, Prozent,
    Startzeit, Laufzeit und eine grobe Restzeit des aktuellen Schritts.
 5. Transkript lesen und `Als TXT herunterladen` wählen.
@@ -127,6 +130,8 @@ oder Sprecheroption verwerfen das vorherige Ergebnis. Mit
 - `logs/transcriber.log` (max. 4 × 1 MB, nicht versioniert) enthält nur
   Verarbeitungsmetadaten. Es werden keine Dateinamen, Transkripttexte oder
   Tokens absichtlich protokolliert.
+- `fachbegriffe.txt` (nicht versioniert) enthält deine Fachbegriff- und
+  Namensliste im Klartext. Leeren des Felds löscht die Datei.
 
 Die lokale App ist kein Mehrbenutzer- oder öffentlich erreichbarer Dienst.
 Die Deaktivierung von Bibliotheks-Telemetrie ist keine Betriebssystem-Firewall.

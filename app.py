@@ -3,7 +3,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from transcriber import jobs
+from transcriber import jobs, vocabulary
 from transcriber.engine import MAX_VOCABULARY_CHARS, clock, whisper_model
 from transcriber.logs import LOG_FILE, configure_logging
 from transcriber.media import FORMATS
@@ -21,6 +21,14 @@ def invalidate() -> None:
     if job is None or job.state != "running":
         jobs.discard(st.query_params.get("job"))
         st.query_params.pop("job", None)
+
+
+def store_vocabulary() -> None:
+    invalidate()
+    try:
+        vocabulary.save(st.session_state["vocabulary"])
+    except OSError:
+        st.session_state["vocabulary_error"] = True
 
 
 def reset() -> None:
@@ -70,6 +78,7 @@ with st.expander("Einmalige Einrichtung & Datenschutz"):
         "nur im Arbeitsspeicher der laufenden App (bis zum Verwerfen, App-Neustart oder "
         "max. 12 Stunden), damit es ein Neuladen der Seite übersteht. Es gibt keine "
         "Ergebnisbibliothek. Das Protokoll enthält keine Dateinamen und keinen Text. "
+        "Nur die Fachbegriff-Liste wird lokal in `fachbegriffe.txt` gespeichert. "
         "Details und Modellfreischaltung stehen in der README."
     )
 
@@ -98,17 +107,23 @@ if job is None and "job" in st.query_params:
     )
 running = job is not None and job.state == "running"
 
-vocabulary = st.text_area(
+if "vocabulary" not in st.session_state:
+    st.session_state["vocabulary"] = vocabulary.load()[:MAX_VOCABULARY_CHARS]
+terms = st.text_area(
     "Fachbegriffe & Namen (optional)",
+    key="vocabulary",
     max_chars=MAX_VOCABULARY_CHARS,
     placeholder="z. B. Müller, Kubernetes, Q3-Roadmap, Frau Dr. Yilmaz",
     help=(
         "Wörter, die in der Aufnahme vorkommen und oft falsch erkannt werden, getrennt durch "
         "Komma oder Zeilenumbruch. Das Modell bevorzugt dann diese Schreibweisen. Nur echte "
-        "Begriffe eintragen: Bei Stille kann das Modell sonst einzelne Begriffe erfinden."
+        "Begriffe eintragen: Bei Stille kann das Modell sonst einzelne Begriffe erfinden. "
+        f"Die Liste wird automatisch lokal in `{vocabulary.VOCABULARY_FILE.name}` gespeichert."
     ),
-    on_change=invalidate,
+    on_change=store_vocabulary,
 )
+if st.session_state.pop("vocabulary_error", False):
+    st.warning(f"Die Liste konnte nicht in `{vocabulary.VOCABULARY_FILE}` gespeichert werden.")
 
 model = whisper_model()
 if model is None:
@@ -130,7 +145,7 @@ if st.button("Transkribieren", type="primary", disabled=upload is None or runnin
             detect_speakers,
             f"{Path(upload.name).stem}-transkript.txt",
             max_bytes=limit_mb * 1024 * 1024,
-            vocabulary=vocabulary,
+            vocabulary=terms,
         )
         st.query_params["job"] = job.id
         st.rerun()

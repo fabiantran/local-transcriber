@@ -113,3 +113,26 @@ def test_unknown_job_after_restart_shows_hint():
     app.run()
     assert not app.exception
     assert "nicht mehr verfügbar" in app.warning[0].value
+
+
+def test_vocabulary_is_loaded_and_saved_locally(isolated_vocabulary):
+    isolated_vocabulary.write_text("Yilmaz, Kubernetes\n", encoding="utf-8")
+    app = AppTest.from_file(str(ROOT / "app.py")).run()
+    assert app.text_area[0].value == "Yilmaz, Kubernetes"
+    app.text_area[0].input("Yilmaz\nQ3-Roadmap").run()
+    assert isolated_vocabulary.read_text(encoding="utf-8") == "Yilmaz\nQ3-Roadmap\n"
+    assert AppTest.from_file(str(ROOT / "app.py")).run().text_area[0].value == "Yilmaz\nQ3-Roadmap"
+    app.text_area[0].input("  ").run()
+    assert not isolated_vocabulary.exists()
+    assert not list(isolated_vocabulary.parent.iterdir())
+
+
+def test_vocabulary_save_failure_is_reported(monkeypatch, isolated_vocabulary):
+    def fail(_):
+        raise PermissionError
+
+    monkeypatch.setattr("transcriber.vocabulary.save", fail)
+    app = AppTest.from_file(str(ROOT / "app.py")).run()
+    app.text_area[0].input("Yilmaz").run()
+    assert not app.exception
+    assert "nicht" in app.warning[0].value
