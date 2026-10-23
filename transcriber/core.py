@@ -15,12 +15,17 @@ class Word:
     start: float
     end: float
     text: str
+    probability: float | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.start) or not math.isfinite(self.end):
             raise TranscriptionError("Das Modell hat ungültige Zeitstempel geliefert.")
         if self.start < 0 or self.end < self.start:
             raise TranscriptionError("Das Modell hat ungültige Zeitstempel geliefert.")
+        if self.probability is not None and (
+            not math.isfinite(self.probability) or not 0 <= self.probability <= 1
+        ):
+            raise TranscriptionError("Das Modell hat einen ungültigen Konfidenzwert geliefert.")
 
 
 @dataclass(frozen=True)
@@ -46,6 +51,17 @@ class Segment:
     end: float
     text: str
     speaker: str | None = None
+    words: tuple[Word, ...] = ()
+
+
+def words_text(words: Sequence[Word]) -> str:
+    text = ""
+    for word in words:
+        if not word.text.strip():
+            continue
+        separator = "" if not text or word.text.startswith(" ") or word.text[0] in ".,!?;:" else " "
+        text += separator + word.text
+    return text.strip()
 
 
 def assign_speakers(
@@ -87,16 +103,16 @@ def assign_speakers(
             and word.end - segments[-1].start <= 25
         ):
             previous = segments[-1]
-            # Whisper words normally include leading spaces, but not always.
-            separator = "" if word.text.startswith(" ") or word.text[0] in ".,!?;:" else " "
+            combined = previous.words + (word,)
             segments[-1] = Segment(
                 previous.start,
                 max(previous.end, word.end),
-                previous.text + separator + word.text,
+                words_text(combined),
                 label,
+                combined,
             )
         else:
-            segments.append(Segment(word.start, word.end, word.text.strip(), label))
+            segments.append(Segment(word.start, word.end, word.text.strip(), label, (word,)))
     return tuple(segments)
 
 

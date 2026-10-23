@@ -195,6 +195,38 @@ def test_without_vocabulary_no_prompt_is_used(monkeypatch, tmp_path):
     assert api.call_args.kwargs["initial_prompt"] is None
 
 
+def test_whisper_preserves_word_confidence(monkeypatch, tmp_path):
+    api = Mock(
+        return_value={
+            "segments": [
+                {
+                    "text": " Hi",
+                    "words": [
+                        {"start": 0, "end": 1, "word": " Hi", "probability": 0.27},
+                        {"start": 1, "end": 2, "word": " there"},
+                    ],
+                }
+            ]
+        }
+    )
+    monkeypatch.setitem(sys.modules, "mlx_whisper", SimpleNamespace(transcribe=api))
+    result = engine.whisper_words(tmp_path / "a.wav", tmp_path, "de")
+    assert result == [Word(0, 1, " Hi", 0.27), Word(1, 2, " there")]
+
+
+def test_engine_retains_audio_before_temporary_file_is_deleted(configured_engine, monkeypatch):
+    audio = configured_engine / "audio.wav"
+    audio.write_bytes(b"wav-test")
+    words = [Word(0, 1, " Hi", 0.3)]
+    monkeypatch.setattr(engine, "whisper_words", lambda *_: words)
+    retained = []
+    result = engine.transcribe(
+        io.BytesIO(), "de", False, lambda *_: None, 100, retain_audio=retained.append
+    )
+    assert retained == [b"wav-test"]
+    assert result[0].words == tuple(words)
+
+
 def test_falls_back_to_legacy_small_model(monkeypatch, tmp_path):
     monkeypatch.setattr(engine, "MODEL_ROOT", tmp_path)
     assert engine.whisper_model() is None

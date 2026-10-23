@@ -5,11 +5,11 @@ import sys
 import threading
 import time
 import wave
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, Literal, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, BinaryIO, Literal, NotRequired, Protocol, TypedDict
 
 from transcriber.core import (
     Segment,
@@ -104,6 +104,7 @@ class WhisperWord(TypedDict):
     start: float
     end: float
     word: str
+    probability: NotRequired[float]
 
 
 class WhisperSegment(TypedDict):
@@ -222,7 +223,15 @@ def whisper_words(
         if segment["text"].strip() and not segment.get("words"):
             raise TranscriptionError("Das Sprachmodell hat Text ohne Wortzeitstempel geliefert.")
         for item in segment.get("words", []):
-            words.append(Word(float(item["start"]), float(item["end"]), item["word"]))
+            probability = item.get("probability")
+            words.append(
+                Word(
+                    float(item["start"]),
+                    float(item["end"]),
+                    item["word"],
+                    float(probability) if probability is not None else None,
+                )
+            )
     return words
 
 
@@ -272,6 +281,7 @@ def transcribe(
     progress: Progress,
     max_bytes: int,
     vocabulary: str = "",
+    retain_audio: Callable[[bytes], None] | None = None,
 ) -> tuple[Segment, ...]:
     if language not in ("de", "en"):
         raise TranscriptionError("Bitte Deutsch oder Englisch auswählen.")
@@ -347,4 +357,13 @@ def transcribe(
                         "oder bewusst ohne Sprechererkennung erneut starten."
                     )
             progress("Ergebnis erstellen …")
-            return assign_speakers(words, turns)
+            segments = assign_speakers(words, turns)
+            if retain_audio is not None and segments:
+                try:
+                    retain_audio(audio.read_bytes())
+                except (OSError, MemoryError) as error:
+                    raise TranscriptionError(
+                        "Die Tonspur konnte nicht im Arbeitsspeicher behalten werden. "
+                        "Bitte freien Speicherplatz und Arbeitsspeicher prüfen."
+                    ) from error
+            return segments

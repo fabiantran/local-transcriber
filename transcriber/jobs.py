@@ -7,11 +7,11 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import BinaryIO, Literal
 
 from transcriber import engine
-from transcriber.core import TranscriptionError, transcript_text
+from transcriber.core import Segment, TranscriptionError, transcript_text, words_text
 
 log = logging.getLogger("transcriber")
 KEEP_FINISHED_SECONDS = 12 * 60 * 60
@@ -34,6 +34,28 @@ class Job:
     error: str | None = None
     finished: float | None = None
     phase_started: float = field(default_factory=time.time)
+    segments: tuple[Segment, ...] = ()
+    audio: bytes | None = field(default=None, repr=False)
+    reviewed: set[tuple[int, int]] = field(default_factory=set)
+
+    def retain_audio(self, audio: bytes) -> None:
+        self.audio = audio
+
+    def correct_word(self, segment_index: int, word_index: int, text: str) -> None:
+        if self.state != "done":
+            raise TranscriptionError("Korrekturen sind erst nach der Verarbeitung möglich.")
+        if not text.strip():
+            raise TranscriptionError("Bitte ein Wort oder eine korrigierte Formulierung eingeben.")
+        segment = self.segments[segment_index]
+        word = segment.words[word_index]
+        words = list(segment.words)
+        prefix = " " if word.text.startswith(" ") else ""
+        words[word_index] = replace(word, text=prefix + text.strip())
+        segments = list(self.segments)
+        segments[segment_index] = replace(segment, words=tuple(words), text=words_text(words))
+        self.segments = tuple(segments)
+        self.result = transcript_text(self.segments)
+        self.reviewed.add((segment_index, word_index))
 
     @property
     def elapsed(self) -> float:
@@ -86,7 +108,9 @@ def _run(job: Job, source: BinaryIO, max_bytes: int) -> None:
             job.report,
             max_bytes,
             vocabulary=job.vocabulary,
+            retain_audio=job.retain_audio,
         )
+        job.segments = segments
         job.result = transcript_text(segments)
         job.state = "done"
     except TranscriptionError as error:
@@ -97,6 +121,8 @@ def _run(job: Job, source: BinaryIO, max_bytes: int) -> None:
         job.error = "Unerwarteter Fehler bei der Verarbeitung. Details stehen im Log."
         job.state = "error"
     finally:
+        if job.state != "done":
+            job.audio = None
         job.finished = time.time()
         job.fraction = None
         if job.state == "running":

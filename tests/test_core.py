@@ -17,14 +17,14 @@ def test_switch_speakers_within_one_whisper_segment():
     words = [Word(0, 0.5, " Hallo"), Word(0.6, 1, " Welt."), Word(1.1, 1.5, " Hello.")]
     turns = [SpeakerTurn(1.05, 2, "B"), SpeakerTurn(0, 1.05, "A")]
     assert assign_speakers(words, turns) == (
-        Segment(0, 1, "Hallo Welt.", "Sprecher 1"),
-        Segment(1.1, 1.5, "Hello.", "Sprecher 2"),
+        Segment(0, 1, "Hallo Welt.", "Sprecher 1", tuple(words[:2])),
+        Segment(1.1, 1.5, "Hello.", "Sprecher 2", (words[2],)),
     )
 
 
 def test_unknown_is_not_assigned_to_nearest_speaker():
     assert assign_speakers([Word(3, 4, "Hallo")], [SpeakerTurn(0, 1, "A")]) == (
-        Segment(3, 4, "Hallo", "Sprecher unbekannt"),
+        Segment(3, 4, "Hallo", "Sprecher unbekannt", (Word(3, 4, "Hallo"),)),
     )
 
 
@@ -35,7 +35,7 @@ def test_total_overlap_wins_not_first_matching_turn():
 
 def test_without_diarization_no_labels_and_readable_punctuation():
     words = [Word(0, 0.2, "Hello"), Word(0.2, 0.3, ","), Word(0.4, 0.8, " world!")]
-    assert assign_speakers(words, None) == (Segment(0, 0.8, "Hello, world!"),)
+    assert assign_speakers(words, None) == (Segment(0, 0.8, "Hello, world!", words=tuple(words)),)
 
 
 def test_pause_and_long_passages_are_separate_segments():

@@ -81,7 +81,31 @@ vollständigen Ergebnis ohne Sprecherlabels.
    kann auch direkt bearbeitet werden (Änderungen erscheinen nach Neuladen der Seite).
 4. `Transkribieren` drücken. Die Seite zeigt den aktuellen Schritt, Prozent,
    Startzeit, Laufzeit und eine grobe Restzeit des aktuellen Schritts.
-5. Transkript lesen und `Als TXT herunterladen` wählen.
+5. Transkript lesen, auffällige Wörter unter `Unsichere Wörter prüfen & korrigieren`
+   nachhören und bei Bedarf korrigieren. Danach `Als TXT herunterladen` wählen.
+
+### Unsichere Wörter nachhören und korrigieren
+
+Die App übernimmt Whispers Konfidenzwert pro Wort und bewahrt Wortzeitstempel
+auch bei Sprechererkennung. Standardmäßig zeigt die Prüfansicht Wörter mit einem
+Wert unter 0,60 sowie Wörter ohne Konfidenzwert. Die Schwelle lässt sich ändern.
+Die Werte sind **keine kalibrierten Wahrscheinlichkeiten für korrekte Wörter**:
+Fehler können hohe Werte haben, richtige Wörter niedrige. Mit `Alle Wörter anzeigen`
+kannst du deshalb auch jede andere erkannte Wortstelle prüfen.
+
+Wähle ein Wort anhand von Text, Zeitstempel und Konfidenz. Darunter stehen der
+Textkontext und ein Audioplayer mit bis zu zwei Sekunden Kontext vor und nach
+dem Wort (bei Video wird die Tonspur verwendet). Trage die richtige Schreibweise
+oder Formulierung ein und drücke `Korrektur übernehmen / als geprüft markieren`.
+Transkript und TXT-Download enthalten sofort die Änderung; Zeitstempel und
+Sprecherzuordnung bleiben unverändert. Geprüfte Wörter bleiben auswählbar.
+Dadurch wird das Modell nicht trainiert und die Fachbegriffliste nicht verändert.
+
+Die aufbereitete Tonspur und Korrekturen bleiben nur im Arbeitsspeicher derselben
+laufenden App und überstehen ein Neuladen der Auftragsadresse. Die Tonspur
+benötigt zusätzlich etwa 115 MB RAM pro Stunde Aufnahme. Korrekturen vor dem
+Verwerfen oder App-Neustart als TXT herunterladen. Vor dieser Funktion erstellte
+Aufträge müssen für Wortprüfung und Nachhören erneut transkribiert werden.
 
 Die Verarbeitung läuft im Hintergrund der App. Die Adresse enthält danach
 `?job=…`: Du kannst die Seite neu laden, den Tab schließen und dieselbe Adresse
@@ -102,7 +126,7 @@ tail -f logs/transcriber.log
 Die Sprechererkennung läuft auf der CPU und kann bei langen Aufnahmen deutlich
 länger dauern als die Transkription selbst.
 
-Es gibt keinen Editor, Medienplayer, Stapelbetrieb oder Untertitel-Export.
+Es gibt keinen Stapelbetrieb oder Untertitel-Export.
 Ein Download startet die Analyse nicht erneut. Änderungen an Datei, Sprache
 oder Sprecheroption verwerfen das vorherige Ergebnis. Mit
 `Datei & Ergebnis verwerfen` werden Upload und Ergebnis zurückgesetzt.
@@ -116,7 +140,8 @@ oder Sprecheroption verwerfen das vorherige Ergebnis. Mit
   Streamlit-, Hugging-Face- und pyannote-Nutzungsmetriken aktiv.
 - Modelle bleiben in `.models/` im Projektordner. Dieser Ordner wird nicht
   versioniert und kann mehrere GB umfassen.
-- Upload und Ergebnis liegen nur im Arbeitsspeicher der laufenden App, damit ein
+- Upload, aufbereitete Tonspur zum Nachhören, Ergebnis und Korrekturen liegen nur
+  im Arbeitsspeicher der laufenden App, damit ein
   Neuladen der Seite sie nicht verliert. Ergebnisse verschwinden mit
   `Datei & Ergebnis verwerfen`, beim App-Neustart oder spätestens nach 12 Stunden
   (beim Start eines neuen Auftrags). Wer die `?job=…`-Adresse kennt, sieht das

@@ -4,9 +4,10 @@ from pathlib import Path
 import streamlit as st
 
 from transcriber import jobs, vocabulary
+from transcriber.core import TranscriptionError, timestamp
 from transcriber.engine import MAX_VOCABULARY_CHARS, clock, whisper_model
 from transcriber.logs import LOG_FILE, configure_logging
-from transcriber.media import FORMATS
+from transcriber.media import FORMATS, audio_clip
 
 configure_logging()
 st.set_page_config(page_title="Lokaler Transkribierer", page_icon="🎙", layout="centered")
@@ -34,6 +35,91 @@ def store_vocabulary() -> None:
 def reset() -> None:
     invalidate()
     st.session_state["upload_version"] = st.session_state.get("upload_version", 0) + 1
+
+
+def review_words(job: jobs.Job) -> None:
+    with st.expander("Unsichere Wörter prüfen & korrigieren", expanded=True):
+        st.caption(
+            "Niedrige Konfidenz ist ein Prüfhinweis, keine Fehlergarantie. Auch Wörter mit "
+            "hohem Wert können falsch sein. Fehlende Werte werden als unbekannt aufgeführt."
+        )
+        threshold = st.slider(
+            "Prüfschwelle (Modell-Konfidenz)", 0.0, 1.0, 0.6, 0.05, key=f"threshold_{job.id}"
+        )
+        show_all = st.checkbox("Alle Wörter anzeigen", key=f"all_words_{job.id}")
+        candidates = [
+            (si, wi)
+            for si, segment in enumerate(job.segments)
+            for wi, word in enumerate(segment.words)
+            if show_all or word.probability is None or word.probability < threshold
+        ]
+        st.caption(
+            f"{len(candidates)} Wörter zur Auswahl · "
+            f"{sum(key in job.reviewed for key in candidates)} davon bereits geprüft"
+        )
+        if not candidates:
+            st.info("Keine Wörter unter der Prüfschwelle. Bei Bedarf alle Wörter anzeigen.")
+            return
+
+        def label(key: tuple[int, int]) -> str:
+            si, wi = key
+            word = job.segments[si].words[wi]
+            confidence = (
+                "Konfidenz unbekannt"
+                if word.probability is None
+                else f"Konfidenz {word.probability:.2f}"
+            )
+            checked = " · geprüft" if key in job.reviewed else ""
+            return f"{timestamp(word.start)} · {word.text.strip()} · {confidence}{checked}"
+
+        selected = st.selectbox(
+            "Wortstelle auswählen",
+            candidates,
+            format_func=label,
+            key=f"review_word_{job.id}",
+        )
+        si, wi = selected
+        segment = job.segments[si]
+        word = segment.words[wi]
+        st.caption(
+            f"Wortstelle: {timestamp(word.start)} – {timestamp(word.end)}"
+            + (f" · {segment.speaker}" if segment.speaker else "")
+        )
+        context = [
+            f"⟦{item.text.strip()}⟧" if index == wi else item.text.strip()
+            for index, item in enumerate(segment.words)
+            if max(0, wi - 6) <= index <= wi + 6
+        ]
+        st.text(" ".join(context))
+        if job.audio is not None:
+            try:
+                clip = audio_clip(job.audio, word.start, word.end)
+            except TranscriptionError as error:
+                st.error(str(error))
+            else:
+                st.audio(clip, format="audio/wav")
+                st.caption(
+                    "Audioausschnitt mit bis zu zwei Sekunden Kontext vor und nach dem Wort."
+                )
+        else:
+            st.warning("Für diesen Auftrag ist keine Tonspur zum Nachhören verfügbar.")
+        replacement = st.text_input(
+            "Korrektur",
+            value=word.text.strip(),
+            key=f"correction_{job.id}_{si}_{wi}",
+        )
+        if st.button("Korrektur übernehmen / als geprüft markieren", key=f"apply_{job.id}"):
+            try:
+                job.correct_word(si, wi, replacement)
+            except TranscriptionError as error:
+                st.error(str(error))
+            else:
+                st.rerun()
+        st.caption(
+            "Korrekturen gelten sofort für Transkript und TXT-Download und überstehen ein "
+            "Neuladen derselben Auftragsadresse. Sie gehen beim Verwerfen oder App-Neustart "
+            "verloren. Das Modell wird dadurch nicht trainiert."
+        )
 
 
 @st.fragment(run_every=2)
@@ -74,7 +160,8 @@ with st.expander("Einmalige Einrichtung & Datenschutz"):
         language="bash",
     )
     st.write(
-        "Dateien werden temporär aufbereitet und anschließend gelöscht. Das Ergebnis bleibt "
+        "Dateien werden temporär aufbereitet und anschließend gelöscht. Die aufbereitete "
+        "Tonspur zum Nachhören und das Ergebnis mit Korrekturen bleiben "
         "nur im Arbeitsspeicher der laufenden App (bis zum Verwerfen, App-Neustart oder "
         "max. 12 Stunden), damit es ein Neuladen der Seite übersteht. Es gibt keine "
         "Ergebnisbibliothek. Das Protokoll enthält keine Dateinamen und keinen Text. "
@@ -162,6 +249,8 @@ elif job is not None:
     st.caption(f"Fertig nach {clock(job.elapsed)} · {settings}")
     if job.result:
         st.text(job.result)
+        if any(segment.words for segment in job.segments):
+            review_words(job)
         st.download_button(
             "Als TXT herunterladen",
             data=job.result.encode("utf-8"),

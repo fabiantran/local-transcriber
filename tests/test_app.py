@@ -8,7 +8,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from transcriber import jobs
-from transcriber.core import Segment, TranscriptionError
+from transcriber.core import Segment, TranscriptionError, Word, assign_speakers, transcript_text
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -136,3 +136,81 @@ def test_vocabulary_save_failure_is_reported(monkeypatch, isolated_vocabulary):
     app.text_area[0].input("Yilmaz").run()
     assert not app.exception
     assert "nicht" in app.warning[0].value
+
+
+def test_word_review_correction_audio_export_and_reload(monkeypatch):
+    from test_review import wav_bytes
+
+    downloads = []
+    download_button = st.download_button
+
+    def capture_download(*args, **kwargs):
+        downloads.append(kwargs["data"])
+        return download_button(*args, **kwargs)
+
+    monkeypatch.setattr(st, "download_button", capture_download)
+    job = jobs.Job("de", False, "test.txt", state="done")
+    job.segments = assign_speakers(
+        [Word(0, 1, " Hallo", 0.95), Word(1, 2, " Weld.", 0.3), Word(2, 3, " Test")], None
+    )
+    job.audio = wav_bytes()
+    job.result = transcript_text(job.segments)
+    jobs.JOBS[job.id] = job
+    app = AppTest.from_file(str(ROOT / "app.py"))
+    app.query_params["job"] = job.id
+    app.run()
+    assert not app.exception
+    assert len(app.selectbox[1].options) == 2
+    assert "Weld." in app.selectbox[1].options[0]
+    assert "unbekannt" in app.selectbox[1].options[1]
+    assert app.get("audio")
+    app.text_input[0].input("Welt.")
+    app.button[1].click().run()
+    assert not app.exception
+    assert "Hallo Welt. Test" in app.text[0].value
+    assert "geprüft" in app.selectbox[1].options[0]
+    assert "Welt." in job.result
+    assert "Weld." not in job.result
+    assert downloads[-1] == job.result.encode("utf-8")
+    app.checkbox[0].check().run()
+    assert len(app.selectbox[1].options) == 3
+    reloaded = AppTest.from_file(str(ROOT / "app.py"))
+    reloaded.query_params["job"] = job.id
+    reloaded.run()
+    assert "Hallo Welt. Test" in reloaded.text[0].value
+    assert job.reviewed == {(0, 1)}
+    assert reloaded.get("download_button")
+
+
+def test_review_with_no_low_confidence_words_and_without_audio():
+    job = jobs.Job("de", False, "test.txt", state="done")
+    job.segments = assign_speakers([Word(0, 1, "Hallo", 0.99)], None)
+    job.result = transcript_text(job.segments)
+    jobs.JOBS[job.id] = job
+    app = AppTest.from_file(str(ROOT / "app.py"))
+    app.query_params["job"] = job.id
+    app.run()
+    assert not app.exception
+    assert "Keine Wörter" in app.info[0].value
+    app.checkbox[0].check().run()
+    assert not app.exception
+    assert "keine Tonspur" in app.warning[0].value
+
+
+def test_review_threshold_and_empty_correction_are_explicit():
+    job = jobs.Job("de", False, "test.txt", state="done")
+    job.segments = assign_speakers([Word(0, 1, "Hallo", 0.6), Word(1, 2, "Welt", 0.9)], None)
+    job.result = transcript_text(job.segments)
+    jobs.JOBS[job.id] = job
+    app = AppTest.from_file(str(ROOT / "app.py"))
+    app.query_params["job"] = job.id
+    app.run()
+    assert "Keine Wörter" in app.info[0].value
+    app.slider[0].set_value(0.65).run()
+    assert len(app.selectbox[1].options) == 1
+    app.text_input[0].input(" ")
+    app.button[1].click().run()
+    assert not app.exception
+    assert "eingeben" in app.error[0].value
+    assert not job.reviewed
+    assert "Hallo Welt" in job.result
