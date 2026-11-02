@@ -299,3 +299,21 @@ def test_invalid_correction_does_not_advance():
     assert not app.exception
     assert not app.error
     assert app.selectbox[1].value == (0, 1)
+
+
+def test_library_lists_saved_transcript_and_reopens_it_after_restart():
+    job = jobs.Job("de", True, "aufnahme.wav", state="done", started=1.0)
+    job.segments = assign_speakers([Word(0, 1, "Grüße", 0.4)], None)
+    job.result = transcript_text(job.segments)
+    job.retain_audio(b"audio")
+    job.save_transcript()
+    jobs.JOBS.clear()
+    app = AppTest.from_file(str(ROOT / "app.py")).run()
+    assert not app.exception
+    assert any(item.value == "Gespeicherte Transkripte (1)" for item in app.sidebar.subheader)
+    open_button = next(b for b in app.sidebar.button if b.key == f"open_saved_{job.id}")
+    open_button.click().run()
+    assert not app.exception
+    assert app.query_params["job"] == job.id
+    assert "Grüße" in app.text[0].value
+    assert jobs.get(job.id) is not None

@@ -14,14 +14,29 @@ st.set_page_config(page_title="Lokaler Transkribierer", page_icon="🎙", layout
 
 
 def current_job() -> jobs.Job | None:
-    return jobs.get(st.query_params.get("job"))
+    try:
+        return jobs.load_saved(st.query_params.get("job"))
+    except TranscriptionError:
+        return None
 
 
 def invalidate() -> None:
-    job = current_job()
+    job = jobs.get(st.query_params.get("job"))
     if job is None or job.state != "running":
         jobs.discard(st.query_params.get("job"))
         st.query_params.pop("job", None)
+
+
+def open_saved(job_id: str) -> None:
+    try:
+        loaded = jobs.load_saved(job_id)
+    except TranscriptionError:
+        st.session_state["library_error"] = True
+        return
+    if loaded is None:
+        st.session_state["library_error"] = True
+        return
+    st.query_params["job"] = job_id
 
 
 def store_vocabulary() -> None:
@@ -134,11 +149,37 @@ def review_words(job: jobs.Job) -> None:
         st.caption(
             "Klick oder Enter übernimmt die Korrektur und öffnet die nächste ungeprüfte "
             "Wortstelle der aktuellen Auswahl. "
-            "Korrekturen gelten sofort für Transkript und TXT-Download und überstehen ein "
-            "Neuladen derselben Auftragsadresse. Die lokale TXT-Datei in transkripte/ wird "
-            "ebenfalls aktualisiert und bleibt beim Verwerfen oder App-Neustart erhalten. "
-            "Das Modell wird dadurch nicht trainiert."
+            "Korrekturen werden sofort in transkripte/ gespeichert (TXT und JSON) und "
+            "überstehen ein Neuladen sowie einen App-Neustart. Das Modell wird dadurch nicht "
+            "trainiert."
         )
+
+
+def render_library(saved_jobs: list[jobs.Job]) -> None:
+    st.caption(
+        "Fertige Transkripte bleiben im Ordner transkripte/ erhalten, auch nach dem Schließen "
+        "der App. Öffne ein Transkript, um die Wortprüfung dort fortzusetzen."
+    )
+    if not saved_jobs:
+        st.info("Noch keine gespeicherten Transkripte. Fertige Aufträge erscheinen hier.")
+        return
+    for saved in saved_jobs:
+        with st.container(border=True):
+            st.markdown(f"**{saved.download_name}**")
+            language = "Deutsch" if saved.language == "de" else "Englisch"
+            speakers = (
+                "mit Sprechererkennung" if saved.detect_speakers else "ohne Sprechererkennung"
+            )
+            started = time.strftime("%d.%m.%Y %H:%M", time.localtime(saved.started))
+            st.caption(
+                f"{started} · {language} · {speakers} · {len(saved.reviewed)} Wortstellen geprüft"
+            )
+            st.button(
+                "Öffnen",
+                key=f"open_saved_{saved.id}",
+                on_click=open_saved,
+                args=(saved.id,),
+            )
 
 
 @st.fragment(run_every=2)
@@ -179,16 +220,24 @@ with st.expander("Einmalige Einrichtung & Datenschutz"):
         language="bash",
     )
     st.write(
-        "Dateien werden temporär aufbereitet und anschließend gelöscht. Die aufbereitete "
-        "Tonspur zum Nachhören und die Wortprüfung bleiben "
-        "nur im Arbeitsspeicher der laufenden App (bis zum Verwerfen, App-Neustart oder "
-        "max. 12 Stunden), damit sie ein Neuladen der Seite überstehen. Transkripte und "
-        "Korrekturen werden automatisch als TXT im Git-ignorierten Ordner `transkripte/` "
-        "gespeichert und bleiben dort bis zum manuellen Löschen. Es gibt keine "
-        "Ergebnisbibliothek in der App. Das Protokoll enthält keine Dateinamen und keinen Text. "
-        "Die Fachbegriff-Liste wird lokal in `fachbegriffe.txt` gespeichert. "
-        "Details und Modellfreischaltung stehen in der README."
+        "Dateien werden temporär aufbereitet und anschließend gelöscht. Fertige Aufträge werden "
+        "automatisch im Git-ignorierten Ordner `transkripte/` gespeichert: als TXT, als "
+        "Tonspur (WAV) zum Nachhören und als JSON mit Wortprüfung. Diese Dateien sind nicht "
+        "verschlüsselt und bleiben bis zum manuellen Löschen erhalten, auch nach einem "
+        "App-Neustart. Im Arbeitsspeicher bleiben Aufträge höchstens 12 Stunden. Das Protokoll "
+        "enthält keine Dateinamen und keinen Text. Die Fachbegriff-Liste wird lokal in "
+        "`fachbegriffe.txt` gespeichert. Details und Modellfreischaltung stehen in der README."
     )
+
+if st.session_state.pop("library_error", False):
+    st.error(
+        "Das Transkript konnte nicht geöffnet werden. Die gespeicherten Dateien sind "
+        "unvollständig oder beschädigt."
+    )
+with st.sidebar:
+    saved_jobs = jobs.list_saved()
+    st.subheader(f"Gespeicherte Transkripte ({len(saved_jobs)})")
+    render_library(saved_jobs)
 
 limit_mb = st.get_option("server.maxUploadSize")
 upload = st.file_uploader(
@@ -210,9 +259,10 @@ job = current_job()
 if job is None and "job" in st.query_params:
     st.query_params.pop("job")
     st.warning(
-        "Der vorherige Auftrag ist nicht mehr verfügbar, zum Beispiel weil die App neu "
-        "gestartet wurde. Bereits gespeicherte TXT-Dateien findest du im Ordner transkripte/. "
-        "Für Wortprüfung und Nachhören bitte die Datei erneut transkribieren."
+        "Der vorherige Auftrag ist nicht mehr verfügbar und konnte nicht aus transkripte/ "
+        "geladen werden. Fertige Transkripte findest du unter „Gespeicherte Transkripte“. "
+        "Aufträge aus älteren Versionen haben keine Wortprüfungsdaten und lassen sich nicht "
+        "öffnen. Bitte dann die Datei erneut transkribieren."
     )
 running = job is not None and job.state == "running"
 

@@ -6,7 +6,8 @@ an einen Cloud-Dienst zu senden. Die deutsche Browser-Oberfläche bietet:
 - eine Datei pro Auftrag: WAV, MP3, M4A, FLAC, OGG, MP4, MOV, MKV oder WebM;
 - Deutsch oder Englisch als gesprochene Sprache (keine Übersetzung);
 - optionale automatische Sprechertrennung mit `Sprecher 1`, `Sprecher 2` usw.;
-- ein Transkript mit Zeitstempeln, UTF-8-TXT-Download und automatischer lokaler TXT-Ablage.
+- ein Transkript mit Zeitstempeln, UTF-8-TXT-Download und automatischer lokaler Ablage;
+- eine Bibliothek gespeicherter Transkripte, um unterbrochene Korrekturen fortzusetzen.
 
 Sprechererkennung identifiziert **keine Namen**. Bei Dialekt, Geräuschen,
 überlappenden Stimmen oder kurzen Beiträgen können Text und Sprecherzuordnung
@@ -84,20 +85,28 @@ vollständigen Ergebnis ohne Sprecherlabels.
 5. Transkript lesen, auffällige Wörter unter `Unsichere Wörter prüfen & korrigieren`
    nachhören und bei Bedarf korrigieren. Danach `Als TXT herunterladen` wählen.
 
-### Automatisch gespeicherte Transkripte
+### Automatisch gespeicherte Transkripte und Bibliothek
 
-Fertige Transkripte werden automatisch als UTF-8-TXT im Ordner `transkripte/`
-im Repo gespeichert. Der Ordner wird bei Bedarf erstellt und von Git ignoriert.
-Jeder Auftrag bekommt eine eigene Datei mit dem Downloadnamen und einer eindeutigen
-Auftrags-ID; erneute Transkriptionen überschreiben daher keine älteren Ergebnisse.
-Wortkorrekturen aktualisieren dieselbe Datei. Schlägt das Speichern fehl, zeigt
-die App eine Warnung; das Ergebnis bleibt zum Herunterladen verfügbar.
+Fertige Transkripte werden automatisch im Ordner `transkripte/` im Repo gespeichert.
+Der Ordner wird bei Bedarf erstellt und von Git ignoriert. Pro Auftrag entstehen:
 
-Die TXT-Dateien bleiben auch nach Verwerfen, Ablauf des Auftrags oder App-Neustart
-erhalten und müssen bei Bedarf manuell gelöscht werden. Du kannst sie direkt im
-Ordner öffnen; eine Wiederherstellung der Auftragsansicht, Wortprüfung oder Tonspur
-aus diesen Dateien gibt es nicht. Frühere, nur im Arbeitsspeicher vorhandene
-Ergebnisse lassen sich nach einem Neustart nicht nachträglich sichern.
+- `<Downloadname>-<Auftrags-ID>.txt`: das Transkript als UTF-8-TXT;
+- `<Downloadname>-<Auftrags-ID>.json`: Segmente, Wortzeitstempel, Konfidenzwerte,
+  Sprecher und der Stand der Wortprüfung;
+- `<Downloadname>-<Auftrags-ID>.wav`: die aufbereitete Tonspur zum Nachhören.
+
+Jeder Auftrag hat eine eigene ID; erneute Transkriptionen überschreiben daher keine
+älteren Ergebnisse. Wortkorrekturen aktualisieren Text und JSON-Datei. Schlägt das
+Speichern fehl, zeigt die App eine Warnung; das Ergebnis bleibt zum Herunterladen verfügbar.
+
+Unter `Gespeicherte Transkripte` in der Seitenleiste listet die App alle Dateien mit
+Datum, Sprache, Sprechereinstellung und Anzahl geprüfter Wortstellen. Mit `Öffnen`
+kommst du zurück zum Transkript, auch nach dem Schließen oder Neustarten der App.
+Dort lässt sich die Wortprüfung fortsetzen; bereits geprüfte Stellen bleiben erhalten.
+Die Dateien werden nie automatisch gelöscht und müssen bei Bedarf manuell entfernt werden.
+
+Transkripte, die vor dieser Funktion entstanden, enthalten keine JSON- und WAV-Datei
+und lassen sich in der Bibliothek nicht öffnen. Sie müssen erneut transkribiert werden.
 
 ### Unsichere Wörter nachhören und korrigieren
 
@@ -120,17 +129,14 @@ Transkript und TXT-Download enthalten sofort die Änderung; Zeitstempel und
 Sprecherzuordnung bleiben unverändert. Geprüfte Wörter bleiben auswählbar.
 Dadurch wird das Modell nicht trainiert und die Fachbegriffliste nicht verändert.
 
-Die aufbereitete Tonspur und der Prüfstatus bleiben nur im Arbeitsspeicher derselben
-laufenden App und überstehen ein Neuladen der Auftragsadresse. Die Tonspur
-benötigt zusätzlich etwa 115 MB RAM pro Stunde Aufnahme. Korrigierter Text bleibt
-in der automatisch gespeicherten TXT-Datei erhalten, sofern keine Speicherwarnung
-angezeigt wird. Vor dieser Funktion erstellte Aufträge müssen für Wortprüfung und
-Nachhören erneut transkribiert werden.
+Die Tonspur zum Nachhören benötigt zusätzlich etwa 115 MB RAM pro Stunde Aufnahme,
+solange der Auftrag im Arbeitsspeicher geöffnet ist. Gespeicherte Aufträge laden die
+Tonspur bei Bedarf aus `transkripte/`.
 
 Die Verarbeitung läuft im Hintergrund der App. Die Adresse enthält danach
 `?job=…`: Du kannst die Seite neu laden, den Tab schließen und dieselbe Adresse
-später wieder öffnen, solange die App selbst weiterläuft. Ein Neustart der App
-bricht laufende Aufträge ab und verwirft die Auftragsansicht, nicht die gespeicherten TXT-Dateien.
+später wieder öffnen. Ein Neustart der App bricht laufende Aufträge ab; fertige
+Aufträge sind über die Bibliothek weiterhin verfügbar.
 
 ### Fortschritt und Logs
 
@@ -154,22 +160,20 @@ Die gespeicherte TXT-Datei wird dabei nicht gelöscht.
 
 ## Datenschutz und Speicher
 
-- Die Verarbeitung erfolgt lokal. Es gibt keinen Cloud-Upload und keine
-  Ergebnisbibliothek in der App.
+- Die Verarbeitung erfolgt lokal. Es gibt keinen Cloud-Upload.
 - Nur der explizite Einrichtungsbefehl lädt Modelle herunter. Während der
   App-Verarbeitung sind Hugging-Face-Offline-Modus und die Abschaltung von
   Streamlit-, Hugging-Face- und pyannote-Nutzungsmetriken aktiv.
 - Modelle bleiben in `.models/` im Projektordner. Dieser Ordner wird nicht
   versioniert und kann mehrere GB umfassen.
-- Upload, aufbereitete Tonspur zum Nachhören und Wortprüfungsdaten liegen nur
-  im Arbeitsspeicher der laufenden App, damit ein
-  Neuladen der Seite sie nicht verliert. Diese Auftragsdaten verschwinden mit
+- Der Upload liegt nur im Arbeitsspeicher der laufenden App. Er verschwindet mit
   `Datei & Ergebnis verwerfen`, beim App-Neustart oder spätestens nach 12 Stunden
   (beim Start eines neuen Auftrags). Wer die `?job=…`-Adresse kennt, sieht das
   Ergebnis; die App ist nur über localhost erreichbar.
-- `transkripte/` enthält Transkripte einschließlich Korrekturen dauerhaft im Klartext.
-  Der Ordner wird nicht versioniert. Die Dateien werden nicht automatisch gelöscht;
-  Git-Ignore ist weder Verschlüsselung noch Zugriffsschutz.
+- `transkripte/` enthält Transkripte, Korrekturen, Wortdaten, Sprecherzuordnung und
+  die Tonspur (WAV) dauerhaft unverschlüsselt im Klartext. Der Ordner wird nicht
+  versioniert. Die Dateien werden nicht automatisch gelöscht; Git-Ignore ist weder
+  Verschlüsselung noch Zugriffsschutz. Die Tonspur benötigt etwa 115 MB pro Stunde.
 - Zur Medienaufbereitung werden die Originaldatei und eine Mono-WAV-Datei im
   temporären Systemordner abgelegt und nach Verarbeitung auch bei üblichen
   Fehlern gelöscht. Prozessabsturz oder hartes Beenden können Reste in
