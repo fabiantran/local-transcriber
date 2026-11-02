@@ -72,11 +72,13 @@ def review_words(job: jobs.Job) -> None:
             checked = " · geprüft" if key in job.reviewed else ""
             return f"{timestamp(word.start)} · {word.text.strip()} · {confidence}{checked}"
 
+        selection_key = f"review_word_{job.id}"
+        error_key = f"review_error_{job.id}"
         selected = st.selectbox(
             "Wortstelle auswählen",
             candidates,
             format_func=label,
-            key=f"review_word_{job.id}",
+            key=selection_key,
         )
         si, wi = selected
         segment = job.segments[si]
@@ -103,19 +105,35 @@ def review_words(job: jobs.Job) -> None:
                 )
         else:
             st.warning("Für diesen Auftrag ist keine Tonspur zum Nachhören verfügbar.")
-        replacement = st.text_input(
-            "Korrektur",
-            value=word.text.strip(),
-            key=f"correction_{job.id}_{si}_{wi}",
-        )
-        if st.button("Korrektur übernehmen / als geprüft markieren", key=f"apply_{job.id}"):
+        correction_key = f"correction_{job.id}_{si}_{wi}"
+
+        def apply_correction() -> None:
             try:
-                job.correct_word(si, wi, replacement)
+                job.correct_word(si, wi, st.session_state[correction_key])
             except TranscriptionError as error:
-                st.error(str(error))
+                st.session_state[error_key] = str(error)
             else:
-                st.rerun()
+                st.session_state.pop(error_key, None)
+                index = candidates.index(selected)
+                following = candidates[index + 1 :] + candidates[:index]
+                next_word = next((key for key in following if key not in job.reviewed), None)
+                if next_word is not None:
+                    st.session_state[selection_key] = next_word
+
+        with st.form(f"review_form_{job.id}", enter_to_submit=True):
+            st.text_input("Korrektur", value=word.text.strip(), key=correction_key)
+            st.form_submit_button(
+                "Korrektur übernehmen / als geprüft markieren",
+                key=f"apply_{job.id}",
+                on_click=apply_correction,
+            )
+        if error_key in st.session_state:
+            st.error(st.session_state[error_key])
+        if all(key in job.reviewed for key in candidates):
+            st.success("Alle Wörter der aktuellen Auswahl sind geprüft.")
         st.caption(
+            "Klick oder Enter übernimmt die Korrektur und öffnet die nächste ungeprüfte "
+            "Wortstelle der aktuellen Auswahl. "
             "Korrekturen gelten sofort für Transkript und TXT-Download und überstehen ein "
             "Neuladen derselben Auftragsadresse. Die lokale TXT-Datei in transkripte/ wird "
             "ebenfalls aktualisiert und bleibt beim Verwerfen oder App-Neustart erhalten. "

@@ -193,6 +193,8 @@ def test_word_review_correction_audio_export_and_reload(monkeypatch):
     assert "Welt." in job.result
     assert "Weld." not in job.result
     assert downloads[-1] == job.result.encode("utf-8")
+    assert app.selectbox[1].value == (0, 2)
+    assert app.text_input[0].value == "Test"
     app.checkbox[0].check().run()
     assert len(app.selectbox[1].options) == 3
     reloaded = AppTest.from_file(str(ROOT / "app.py"))
@@ -235,3 +237,65 @@ def test_review_threshold_and_empty_correction_are_explicit():
     assert "eingeben" in app.error[0].value
     assert not job.reviewed
     assert "Hallo Welt" in job.result
+
+
+@pytest.mark.parametrize("show_all", [False, True])
+def test_review_advances_skips_reviewed_wraps_and_finishes(show_all):
+    job = jobs.Job("de", False, "test.txt", state="done")
+    job.segments = assign_speakers(
+        [
+            Word(0, 1, "Eins", 0.3),
+            Word(1, 2, "Zwei", 0.3),
+            Word(2, 3, "Drei", 0.3),
+            Word(3, 4, "Vier", 0.3),
+        ],
+        None,
+    )
+    job.result = transcript_text(job.segments)
+    job.reviewed.add((0, 2))
+    jobs.JOBS[job.id] = job
+    app = AppTest.from_file(str(ROOT / "app.py"))
+    app.query_params["job"] = job.id
+    app.run()
+    if show_all:
+        app.checkbox[0].check().run()
+    app.selectbox[1].select((0, 1)).run()
+    app.text_input[0].input("Zwei!")
+    app.button[1].click().run()
+    assert not app.exception
+    assert app.selectbox[1].value == (0, 3)
+    assert app.text_input[0].value == "Vier"
+    assert app.get("form")[0].proto.form.enter_to_submit
+    app.button[1].click().run()
+    assert not app.exception
+    assert app.selectbox[1].value == (0, 0)
+    assert app.text_input[0].value == "Eins"
+    app.button[1].click().run()
+    assert not app.exception
+    assert job.reviewed == {(0, 0), (0, 1), (0, 2), (0, 3)}
+    assert "Alle Wörter der aktuellen Auswahl sind geprüft." in app.success[0].value
+    assert app.selectbox[1].value == (0, 0)
+    assert len(app.selectbox[1].options) == 4
+    app.selectbox[1].select((0, 1)).run()
+    assert app.text_input[0].value == "Zwei!"
+
+
+def test_invalid_correction_does_not_advance():
+    job = jobs.Job("de", False, "test.txt", state="done")
+    job.segments = assign_speakers([Word(0, 1, "Eins", 0.3), Word(1, 2, "Zwei", 0.3)], None)
+    job.result = transcript_text(job.segments)
+    jobs.JOBS[job.id] = job
+    app = AppTest.from_file(str(ROOT / "app.py"))
+    app.query_params["job"] = job.id
+    app.run()
+    app.text_input[0].input(" ")
+    app.button[1].click().run()
+    assert not app.exception
+    assert app.selectbox[1].value == (0, 0)
+    assert "eingeben" in app.error[0].value
+    assert not job.reviewed
+    app.text_input[0].input("Eins!")
+    app.button[1].click().run()
+    assert not app.exception
+    assert not app.error
+    assert app.selectbox[1].value == (0, 1)

@@ -111,7 +111,11 @@ kannst du deshalb auch jede andere erkannte Wortstelle prüfen.
 Wähle ein Wort anhand von Text, Zeitstempel und Konfidenz. Darunter stehen der
 Textkontext und ein Audioplayer mit bis zu zwei Sekunden Kontext vor und nach
 dem Wort (bei Video wird die Tonspur verwendet). Trage die richtige Schreibweise
-oder Formulierung ein und drücke `Korrektur übernehmen / als geprüft markieren`.
+oder Formulierung ein und drücke `Korrektur übernehmen / als geprüft markieren`
+oder Enter im Korrekturfeld. Danach öffnet sich automatisch die nächste ungeprüfte
+Wortstelle der aktuellen Auswahl, einschließlich des passenden Audioausschnitts.
+Bereits geprüfte Stellen werden übersprungen; am Ende geht es bei Bedarf zur ersten
+noch ungeprüften Stelle zurück. Sind alle Stellen geprüft, erscheint ein Hinweis.
 Transkript und TXT-Download enthalten sofort die Änderung; Zeitstempel und
 Sprecherzuordnung bleiben unverändert. Geprüfte Wörter bleiben auswählbar.
 Dadurch wird das Modell nicht trainiert und die Fachbegriffliste nicht verändert.
