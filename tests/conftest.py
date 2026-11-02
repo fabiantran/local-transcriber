@@ -2,10 +2,17 @@ import logging
 
 import pytest
 
-from transcriber import vocabulary
+from transcriber import jobs, vocabulary
 
 # Keep test runs out of the real log file; configure_logging() skips configured loggers.
 logging.getLogger("transcriber").addHandler(logging.NullHandler())
+
+
+@pytest.fixture(autouse=True)
+def isolated_transcripts(tmp_path, monkeypatch):
+    path = tmp_path / "transkripte"
+    monkeypatch.setattr(jobs, "TRANSCRIPTS_DIR", path)
+    return path
 
 
 @pytest.fixture(autouse=True)

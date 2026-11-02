@@ -44,6 +44,7 @@ def test_explicit_start_result_invalidation_and_no_repeat(monkeypatch):
     assert "Hallo!" in app.text[0].value
     assert app.get("download_button")[0].proto.label == "Als TXT herunterladen"
     assert jobs.get(app.query_params["job"]).download_name == "aufnahme-transkript.txt"
+    assert any("Automatisch gespeichert:" in item.value for item in app.caption)
     app.run()
     assert runner.call_count == 1
     app.selectbox[0].select("Englisch").run()
@@ -113,6 +114,26 @@ def test_unknown_job_after_restart_shows_hint():
     app.run()
     assert not app.exception
     assert "nicht mehr verfügbar" in app.warning[0].value
+    assert "transkripte/" in app.warning[0].value
+
+
+def test_transcript_save_failure_shows_warning_and_keeps_download(
+    monkeypatch, isolated_transcripts
+):
+    isolated_transcripts.write_text("not a directory")
+    upload = io.BytesIO(b"test")
+    upload.name = "aufnahme.wav"
+    monkeypatch.setattr(st, "file_uploader", lambda *_, **__: upload)
+    monkeypatch.setattr(
+        "transcriber.engine.transcribe",
+        Mock(return_value=(Segment(0, 1, "Hallo!", None),)),
+    )
+    app = AppTest.from_file(str(ROOT / "app.py")).run()
+    app.button[0].click().run()
+    assert not app.exception
+    assert "nicht in transkripte/ gespeichert" in app.warning[0].value
+    assert "Hallo!" in app.text[0].value
+    assert app.get("download_button")
 
 
 def test_vocabulary_is_loaded_and_saved_locally(isolated_vocabulary):

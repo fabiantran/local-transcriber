@@ -117,8 +117,9 @@ def review_words(job: jobs.Job) -> None:
                 st.rerun()
         st.caption(
             "Korrekturen gelten sofort für Transkript und TXT-Download und überstehen ein "
-            "Neuladen derselben Auftragsadresse. Sie gehen beim Verwerfen oder App-Neustart "
-            "verloren. Das Modell wird dadurch nicht trainiert."
+            "Neuladen derselben Auftragsadresse. Die lokale TXT-Datei in transkripte/ wird "
+            "ebenfalls aktualisiert und bleibt beim Verwerfen oder App-Neustart erhalten. "
+            "Das Modell wird dadurch nicht trainiert."
         )
 
 
@@ -161,11 +162,13 @@ with st.expander("Einmalige Einrichtung & Datenschutz"):
     )
     st.write(
         "Dateien werden temporär aufbereitet und anschließend gelöscht. Die aufbereitete "
-        "Tonspur zum Nachhören und das Ergebnis mit Korrekturen bleiben "
+        "Tonspur zum Nachhören und die Wortprüfung bleiben "
         "nur im Arbeitsspeicher der laufenden App (bis zum Verwerfen, App-Neustart oder "
-        "max. 12 Stunden), damit es ein Neuladen der Seite übersteht. Es gibt keine "
-        "Ergebnisbibliothek. Das Protokoll enthält keine Dateinamen und keinen Text. "
-        "Nur die Fachbegriff-Liste wird lokal in `fachbegriffe.txt` gespeichert. "
+        "max. 12 Stunden), damit sie ein Neuladen der Seite überstehen. Transkripte und "
+        "Korrekturen werden automatisch als TXT im Git-ignorierten Ordner `transkripte/` "
+        "gespeichert und bleiben dort bis zum manuellen Löschen. Es gibt keine "
+        "Ergebnisbibliothek in der App. Das Protokoll enthält keine Dateinamen und keinen Text. "
+        "Die Fachbegriff-Liste wird lokal in `fachbegriffe.txt` gespeichert. "
         "Details und Modellfreischaltung stehen in der README."
     )
 
@@ -190,7 +193,8 @@ if job is None and "job" in st.query_params:
     st.query_params.pop("job")
     st.warning(
         "Der vorherige Auftrag ist nicht mehr verfügbar, zum Beispiel weil die App neu "
-        "gestartet wurde. Bitte die Datei erneut transkribieren."
+        "gestartet wurde. Bereits gespeicherte TXT-Dateien findest du im Ordner transkripte/. "
+        "Für Wortprüfung und Nachhören bitte die Datei erneut transkribieren."
     )
 running = job is not None and job.state == "running"
 
@@ -247,6 +251,10 @@ elif job is not None:
     settings = "Deutsch" if job.language == "de" else "Englisch"
     settings += " · mit Sprechererkennung" if job.detect_speakers else " · ohne Sprechererkennung"
     st.caption(f"Fertig nach {clock(job.elapsed)} · {settings}")
+    if job.save_error:
+        st.warning(job.save_error)
+    elif job.saved_path is not None:
+        st.caption(f"Automatisch gespeichert: {job.saved_path}")
     if job.result:
         st.text(job.result)
         if any(segment.words for segment in job.segments):

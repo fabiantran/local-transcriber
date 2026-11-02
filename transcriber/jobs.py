@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import threading
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import BinaryIO, Literal
 
 from transcriber import engine
@@ -15,6 +18,7 @@ from transcriber.core import Segment, TranscriptionError, transcript_text, words
 
 log = logging.getLogger("transcriber")
 KEEP_FINISHED_SECONDS = 12 * 60 * 60
+TRANSCRIPTS_DIR = Path(__file__).resolve().parent.parent / "transkripte"
 JOBS: dict[str, Job] = {}
 _LOCK = threading.Lock()
 
@@ -37,6 +41,37 @@ class Job:
     segments: tuple[Segment, ...] = ()
     audio: bytes | None = field(default=None, repr=False)
     reviewed: set[tuple[int, int]] = field(default_factory=set)
+    saved_path: Path | None = None
+    save_error: str | None = None
+
+    def save_transcript(self) -> None:
+        if not self.result:
+            return
+        try:
+            TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+            name = Path(self.download_name.replace("\\", "/")).stem
+            destination = TRANSCRIPTS_DIR / f"{name}-{self.id}.txt"
+            fd, tmp = tempfile.mkstemp(dir=TRANSCRIPTS_DIR, prefix=".transkript-")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as target:
+                    target.write(self.result)
+                os.replace(tmp, destination)
+            finally:
+                Path(tmp).unlink(missing_ok=True)
+        except OSError as error:
+            log.warning(
+                "TXT-Speicherung für Auftrag %s fehlgeschlagen: %s",
+                self.id[:8],
+                type(error).__name__,
+            )
+            self.saved_path = None
+            self.save_error = (
+                "Das aktuelle Transkript konnte nicht in transkripte/ gespeichert werden. "
+                "Bitte als TXT herunterladen und Speicherplatz sowie Ordnerrechte prüfen."
+            )
+        else:
+            self.saved_path = destination
+            self.save_error = None
 
     def retain_audio(self, audio: bytes) -> None:
         self.audio = audio
@@ -56,6 +91,7 @@ class Job:
         self.segments = tuple(segments)
         self.result = transcript_text(self.segments)
         self.reviewed.add((segment_index, word_index))
+        self.save_transcript()
 
     @property
     def elapsed(self) -> float:
@@ -112,6 +148,7 @@ def _run(job: Job, source: BinaryIO, max_bytes: int) -> None:
         )
         job.segments = segments
         job.result = transcript_text(segments)
+        job.save_transcript()
         job.state = "done"
     except TranscriptionError as error:
         job.error = str(error)
